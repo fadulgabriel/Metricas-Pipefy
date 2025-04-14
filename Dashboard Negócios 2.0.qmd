@@ -1,0 +1,612 @@
+---
+title: "Dashboard Negócios"
+author: "ESTAT"
+format: 
+  dashboard:
+    theme: Flatly
+server: shiny
+---
+
+```{r, include= FALSE}
+#| context: setup
+
+#### BAIXANDO OS PACOTES ######
+
+#library dos pacotes
+pacman::p_load(pacman, rsconnect, tidyverse, shiny, bslib, bsicons, gt, reactable, plotly, readxl, shinydashboard, lubridate, DT)
+
+#banco de dados
+setwd("/Users/imac/Desktop/ESTAT/Métricas Pipefy")
+banco <- read_excel("metricas_14-04-2025.xlsx") %>%
+  mutate(
+    `Fase Final` = case_when(
+      !is.na(`Etapa da Perda`) ~ `Etapa da Perda`,
+        `Fase atual` == "Retomada" & !is.na(`Última Fase`) ~ `Última Fase`,
+      TRUE ~ `Fase atual`)
+  ) %>%
+  mutate(Responsáveis = case_when(
+    Responsáveis == "beatriz-ximenes" ~ "Bia",
+    Responsáveis == "Bruno Boaventura" ~ "Bruno",
+    Responsáveis == "Gustavo Lopes" ~ "Gustavo",
+    Responsáveis == "Isabela Yule" ~ "Bela",
+    Responsáveis == "Marina Braulio" ~ "Nina",
+    Responsáveis == "joao-bertoli" ~ "Rola",
+    Responsáveis == "Pedro Oliveros Santarem" ~ "Santarem",
+    Responsáveis == "Gabriel Leonardo Fadul" ~ "Leo",
+    Responsáveis == "Felipe Adriano" ~ "Adrian",
+    Responsáveis == "Gustavo Preard" ~ "Preard",
+    Responsáveis == "Lucas Caires de Sousa" ~ "Caires",
+    Responsáveis == "Maria Beatriz" ~ "Maria",
+    TRUE ~ Responsáveis
+  )) %>%
+  rename(`Data da Venda` = `Primeira vez que entrou na fase Ganho`) %>%
+  mutate(`Data da Venda` = as.Date(`Data da Venda`)) %>%
+  mutate(`Page URL` = case_when(
+    is.na(`Page URL`) ~ "Sem Informação",  
+    grepl("empresarial", `Page URL`, ignore.case = TRUE) ~ "Empresarial",
+    grepl("academico", `Page URL`, ignore.case = TRUE) ~ "Acadêmicos",
+    TRUE ~ "Orgânico"
+  ))
+
+#correções manuais da Data da Venda
+datas_novas <- tibble::tibble(
+  Título = c(
+    "Lucas Canedo", "Ana Clara Tavares", "Yara Cheverria", "Eduardo Resende",
+    "Lucas Vinícius", "Renan Oliveira", "MiBusca", "Carolyna Paiva",
+    "Tiago Santana", "Sérgio Carvalho", "Ian Duarte", "Bianca Decarli Oliveira Bocalon",
+    "Marina Fagundes", "Andrea", "Eliana Caran", "Juvêncio", "Fernando Clark", "Arilson", "Cristian Félix"),
+  nova_data = dmy(c(
+    "17/01/2025", "25/01/2025", "28/01/2025", "31/01/2025",
+    "19/02/2025", "20/02/2025", "21/02/2025", "26/02/2025",
+    "28/02/2025", "10/03/2025", "16/03/2025", "26/03/2025",
+    "31/03/2025", "31/03/2025", "02/04/2025", "09/04/2025", "20/01/2025", "01/01/2025", "06/01/2025")))
+banco <- banco %>%
+  left_join(datas_novas, by = "Título") %>%
+  mutate(
+    `Data da Venda` = if_else(`Fase atual` == "Ganho" & !is.na(nova_data), nova_data, `Data da Venda`)
+  ) %>%
+  select(-nova_data)
+```
+
+#  {.sidebar}
+
+```{r}
+selectInput("vendedor", "Selecione o vendedor:", 
+            choices = c("Todos" = "Todos", "Time" = "Time", unique(banco$Responsáveis)),
+            selected = "Todos", 
+            multiple = TRUE)
+
+dateRangeInput("data_leads", 
+               "Selecione o intervalo de datas:", 
+               start = min(banco$`Criado em`),  
+               end = max(banco$`Criado em`),   
+               min = min(banco$`Criado em`),   
+               max = max(banco$`Criado em`),    
+               format = "yyyy-mm-dd",           
+               separator = " até ",             
+               weekstart = 1)
+
+selectInput("categoria_projeto", "Selecione a Categoria:",
+            choices = c("Todos", "Ciência de Dados", "Estatística", "Projeto-Chave"), 
+            selected = "Todos", 
+            multiple = FALSE)
+```
+
+# Visão Geral
+
+## Row  {height="35%"}
+
+### Faturamento 
+```{r}
+fluidRow(
+  valueBoxOutput("faturamento_box")  
+)
+```
+
+### Taxa de Conversão
+```{r}
+fluidRow(
+  valueBoxOutput("taxa_conversao_box")  
+)
+```
+
+### Qtd de leads
+```{r}
+fluidRow(
+  valueBoxOutput("qtd_leads_box")  
+)
+```
+
+### Fechamentos
+```{r}
+fluidRow(
+  valueBoxOutput("qtd_leads_ganho_box")
+)
+```
+
+## Row {height="65%"}
+
+### Graficos {.tabset}
+```{r}
+#| title: Faturamento Mensal
+
+plotlyOutput("grafico_faturamento_mes")
+```
+
+```{r}
+#| title: Vendas por Canal de Aquisição
+
+plotlyOutput("grafico_campanha_leads")
+```
+
+# Funil & Vendedores 
+
+## Row {height = "30%"}
+
+### Graficos {.tabset}
+```{r}
+#| title: Conversão por Etapa
+
+plotlyOutput("grafico_funil")
+```
+
+```{r}
+#| title: Leads por Vendedor
+
+plotlyOutput("grafico_leads")
+```
+
+```{r}
+#| title: Faturamento por Vendedor
+
+plotlyOutput("grafico_faturamento_vendedor")
+```
+
+## Row {height = "20%"}
+
+### Preço dia util
+```{r}
+fluidRow(
+  valueBoxOutput("preco_por_dia_util_box")
+)
+```
+
+### Negociações perdidas
+```{r}
+fluidRow(
+  valueBoxOutput("negociacao_box")
+)
+```
+
+### Ticket médio 
+```{r}
+fluidRow(
+  valueBoxOutput("ticket_medio_box")
+)
+```
+
+### Qtd de propostas
+```{r}
+fluidRow(
+  valueBoxOutput("qtd_propostas_box")  
+)
+```
+
+
+# Dados
+
+```{r}
+fluidRow(
+  box(
+    title = "Dados do CRM", 
+    status = "primary", 
+    solidHeader = TRUE,
+    DTOutput("raw_data")
+  )
+)
+```
+
+
+
+
+
+```{r}
+#| context: server
+Sys.setlocale("LC_TIME", "pt_BR.UTF-8")
+
+##### Banco ajustado aos Inputs #####
+banco_ajustado <- reactive({
+  vendedores_time <- c("Bia", "Bruno", "Nina", "Bela", "Rola", "Maria")
+  categoria_selecionada <- input$categoria_projeto  
+  
+  banco %>%
+    filter(
+      if("Time" %in% input$vendedor) {
+        Responsáveis %in% vendedores_time 
+      } else if ("Todos" %in% input$vendedor) {
+        TRUE
+      } else {
+        Responsáveis %in% input$vendedor  
+      },
+      if (categoria_selecionada != "Todos") {
+        `Etiquetas` == categoria_selecionada 
+      } else {
+        TRUE 
+      },
+      
+      `Criado em` >= input$data_leads[1],        
+      `Criado em` < (input$data_leads[2] + days(1))        
+    )
+})
+
+
+
+### funil de conversão por etapa ###
+funil_conversao <- reactive({
+  ordem_funil <- c(
+    "Novo Lead", "Primeiro Contato", "Em Contato", "Diagnóstica", "Validação", 
+    "Proposta Elaboração", "Proposta Marcada", "Negociação e Follow-Up", 
+    "Ganho")
+  funil <- banco_ajustado() %>%
+    filter(`Fase Final` %in% ordem_funil) %>%
+    count(`Fase Final`) %>%
+    mutate(`Fase Final` = factor(`Fase Final`, levels = ordem_funil)) %>%
+    arrange(`Fase Final`) %>%
+    mutate(
+      leads_ate_aqui = rev(cumsum(rev(n))),
+      `Taxa de Conversão` = round(leads_ate_aqui / max(leads_ate_aqui) * 100, 1)
+    )
+  
+  return(funil)
+})
+
+## Output (grafico_funil) ##
+output$grafico_funil <- renderPlotly({
+  funil <- funil_conversao()
+  
+  grafico_funil <- ggplot(funil, aes(x = `Fase Final`, y = `Taxa de Conversão`)) +
+    geom_col(fill = "#b5b5b5") +
+    geom_text(aes(label = paste0(`Taxa de Conversão`, "%")), 
+              position = position_stack(vjust = 0.5), size = 2.5, color = "white") +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+    coord_flip() + 
+    labs(title = "Funil de Conversão",
+         x = "Etapa",
+         y = "Taxa de Conversão (%)") +
+    theme_minimal() +
+    theme(axis.text = element_text(size = 9.5),
+          axis.title = element_text(size = 14, face = "bold"),
+          plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+  
+  ggplotly(grafico_funil)
+})
+
+### leads por vendedor ###
+leads_por_vendedor <- reactive({
+  banco_ajustado() %>%
+    group_by(Responsáveis) %>%
+    summarise(Quantidade = n(), .groups = "drop") 
+})
+
+## Output (grafico_leads) ##
+output$grafico_leads <- renderPlotly({
+  leads <- leads_por_vendedor() 
+  
+    grafico_leads <- ggplot(leads, aes(x = Responsáveis, y = Quantidade)) +
+    geom_bar(stat = "identity", fill = "#B0B0B0") +
+    geom_text(aes(label = Quantidade), position = position_stack(vjust = 0.5), size = 5, color = "white") +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.2))) + 
+    labs(title = "Leads por Vendedor",
+         x = "Vendedor",
+         y = "Leads") +
+    theme_minimal() +
+    theme(axis.text = element_text(size = 12),
+          axis.title = element_text(size = 14, face = "bold"),
+          plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+  
+  ggplotly(grafico_leads)
+})
+
+### Faturamento por vendedor ###
+faturamento_por_vendedor <- reactive({
+  faturamento_vendedores <- banco_ajustado() %>%
+    filter(`Fase Final` == "Ganho") %>% 
+    group_by(Responsáveis) %>%           
+    summarise(faturamento = sum(`Orçamento`, na.rm = TRUE)) %>%  
+    arrange(desc(faturamento))
+  
+  return(faturamento_vendedores)
+})
+
+## Output (grafico_faturamento_vendedor)
+output$grafico_faturamento_vendedor <- renderPlotly({
+  faturamento_vendedores <- faturamento_por_vendedor()  
+  
+  grafico_faturamento_vendedor <- ggplot(faturamento_vendedores, aes(x = reorder(Responsáveis, faturamento), y = faturamento)) +
+    geom_col(fill = "#484d50") +  
+    geom_text(aes(label = paste0("R$ ", format(faturamento, big.mark = ".", decimal.mark = ","))), 
+              position = position_stack(vjust = 0.5), size = 3.2, color = "white") +
+    labs(title = "Faturamento por Vendedor",
+         x = "Vendedor",
+         y = "Faturamento") +
+    theme_minimal() +
+    theme(axis.text = element_text(size = 12),
+          axis.title = element_text(size = 14, face = "bold"),
+          plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+  
+  ggplotly(grafico_faturamento_vendedor)
+})
+
+### Campanhas do Google ADS ###
+faturamento_por_campanha <- reactive({
+  distribuicao_leads <- banco_ajustado() %>%
+    filter(`Fase Final` == "Ganho") %>%  
+    group_by(`Page URL`) %>%  
+    summarise(quantidade = n())  
+  return(distribuicao_leads)
+})
+
+## Output (grafico_campanha_leads) ##
+output$grafico_campanha_leads <- renderPlotly({
+  distribuicao_leads <- faturamento_por_campanha()
+  
+  grafico_campanha_leads <- ggplot(distribuicao_leads, aes(x = `Page URL`, y = quantidade, fill = `Page URL`)) +
+    geom_bar(stat = "identity") + 
+    labs(title = "Vendas por Campanha", 
+         fill = "Canal de Aquisição",
+         x = "Categoria de Campanha",  
+         y = "Quantidade de Leads") + 
+    scale_fill_manual(values = c( 
+      "Empresarial" = "#B0B0B0",  
+      "Acadêmicos" = "#B0B0B0",     
+      "Orgânico" = "#D3D3D3",      
+      "Sem Informação" = "#D3D3D3")) + 
+    theme_minimal() + 
+    theme(axis.text = element_text(size = 12),  
+          axis.title = element_text(size = 14, face = "bold"), 
+          plot.title = element_text(size = 16, face = "bold", hjust = 0.5)) 
+  
+  ggplotly(grafico_campanha_leads)
+})
+
+### Faturamento Box ###
+faturamento_secovi <- 1600 + (1100 * (month(Sys.Date()) - 2))
+faturamento_total <- reactive({
+  faturamento_orcamento <- banco_ajustado() %>%
+    filter(`Fase Final` == "Ganho") %>%
+     
+    summarise(faturamento_orcamento = sum(Orçamento, na.rm = TRUE))
+  
+    faturamento_total <- faturamento_orcamento$faturamento_orcamento + faturamento_secovi
+  
+  return(faturamento_total)
+})
+
+## Output (faturamento_box) ##
+output$faturamento_box <- renderValueBox({
+  faturamento <- faturamento_total()
+  valueBox(
+    value = paste0("R$ ", formatC(faturamento, format = "f", big.mark = ".", decimal.mark = ",", digits = 0)),
+    subtitle = "Faturamento Total",
+    icon = icon("dollar-sign"),
+    color = "aqua",  
+    width = 12  
+  )
+})
+
+### Quantd de leads Box ###
+quantidade_leads <- reactive({
+  leads_count <- banco_ajustado() %>%
+    summarise(qtd_leads = n())  
+  
+  return(leads_count$qtd_leads)
+})
+
+## Output (qtd_leads_box) ###
+output$qtd_leads_box <- renderValueBox({
+  qtd_leads <- quantidade_leads()  
+  
+  valueBox(
+    value = formatC(qtd_leads, format = "d", big.mark = ".", decimal.mark = ","), 
+    subtitle = "Leads Qualificados",
+    icon = icon("users"), 
+    color = "aqua", 
+    width = 12 
+  )
+})
+
+### Propostas Marcadas Box ###
+quantidade_propostas <- reactive({
+  propostas_count <- banco_ajustado() %>%
+    filter(`Fase Final` %in% c("Proposta Marcada", "Negociação e Follow-Up", "Ganho")) %>%
+    summarise(qtd_propostas = n())
+  return(propostas_count$qtd_propostas)
+})
+
+## Output (qtd_propostas_box) ##
+output$qtd_propostas_box <- renderValueBox({
+  qtd_propostas <- quantidade_propostas()
+  
+  valueBox(
+    value = formatC(qtd_propostas, format = "d", big.mark = ".", decimal.mark = ","),  
+    subtitle = "Propostas Apresentadas",
+    icon = icon("file-alt"),
+    color = "aqua",  
+    width = 3
+  )
+})
+
+### Taxa de Conversão ###
+taxa_conversao <- reactive({
+  dados <- banco_ajustado()
+  total_leads <- nrow(dados)
+  ganhos <- dados %>%
+    filter(`Fase Final` == "Ganho") %>%
+    nrow()
+  
+  taxa <- ifelse(total_leads > 0, ganhos / total_leads, 0)
+  return(taxa)
+})
+
+## Output (taxa_conversao_box) ##
+output$taxa_conversao_box <- renderValueBox({
+  taxa <- taxa_conversao()
+  
+  valueBox(
+    value = paste0(formatC(100 * taxa, format = "f", digits = 1), "%"),
+    subtitle = "Taxa de Conversão",
+    icon = icon("chart-line"), 
+    color = "aqua",  
+    width = 12
+  )
+})
+
+### Ticket Médio Box ###
+ticket_medio <- reactive({
+  dados_ganho <- banco_ajustado() %>%
+    filter(`Fase Final` == "Ganho") 
+  soma_orcamentos <- sum(dados_ganho$`Orçamento`, na.rm = TRUE)
+  qtd_leads_ganho <- nrow(dados_ganho)
+  ticket_medio <- ifelse(qtd_leads_ganho > 0, soma_orcamentos / qtd_leads_ganho, 0) 
+  
+  return(ticket_medio)
+})
+
+## Output (ticket_medio_box)
+output$ticket_medio_box <- renderValueBox({
+  ticket <- ticket_medio()
+  
+  valueBox(
+    value = paste0("R$ ", formatC(ticket, format = "f", big.mark = ".", decimal.mark = ",", digits = 2)), 
+    subtitle = "Ticket Médio",
+    icon = icon("coins"), 
+    color = "aqua",  
+    width = 3
+  )
+})
+
+### Preço por dia útil Box ###
+preco_por_dia_util <- reactive({
+  dados_ganho <- banco_ajustado() %>%
+    filter(`Fase Final` == "Ganho") 
+    dados_ganho <- dados_ganho %>%
+      mutate(preco_dia_util = `Orçamento` / `Dias úteis`) 
+    preco_dia_util_media <- mean(dados_ganho$preco_dia_util, na.rm = TRUE)
+  return(preco_dia_util_media)
+})
+
+## Output (preco_por_dia_util_box) ##
+output$preco_por_dia_util_box <- renderValueBox({
+  preco <- preco_por_dia_util()
+  
+  valueBox(
+    value = paste0("R$ ", formatC(preco, format = "f", big.mark = ".", decimal.mark = ",", digits = 2)), 
+    subtitle = "Preço por Dia Útil",
+    icon = icon("calendar-day"), 
+    color = "aqua",  
+    width = 3
+  )
+})
+
+### Fechamentos Box ###
+qtd_leads_ganho <- reactive({
+  dados_ganho <- banco_ajustado() %>%
+    filter(`Fase Final` == "Ganho") 
+  qtd_leads_ganho <- nrow(dados_ganho)
+  
+  return(qtd_leads_ganho)
+})
+
+## Output (qtd_leads_ganho_box) ##
+output$qtd_leads_ganho_box <- renderValueBox({
+  qtd_leads <- qtd_leads_ganho()
+  
+  valueBox(
+    value = formatC(qtd_leads, format = "d", big.mark = ".", decimal.mark = ","), 
+    subtitle = "Leads Ganhos",
+    icon = icon("check-circle"), 
+    color = "aqua",  
+    width = 12
+  )
+})
+
+### Valor em Negociações Perdidas ###
+negociacao_total <- reactive({
+  negociacao <- banco_ajustado() %>%
+    filter(`Fase Final` == "Negociação e Follow-Up", `Fase atual` != "Negociação e Follow-Up") %>%
+    summarise(valor_negociacao = sum(Orçamento, na.rm = TRUE))
+  
+  return(negociacao$valor_negociacao)
+})
+
+## Output (negociacao_box) ##
+output$negociacao_box <- renderValueBox({
+  valor <- negociacao_total()
+  valueBox(
+    value = paste0("R$ ", formatC(valor, format = "f", big.mark = ".", decimal.mark = ",", digits = 0)),
+    subtitle = "Negociações Perdidas",
+    icon = icon("handshake"),
+    color = "aqua",
+    width = 3
+  )
+})
+
+### Faturamento por Mês ###
+faturamento_por_mes <- reactive({
+  banco_ajustado() %>%
+    filter(`Fase Final` == "Ganho") %>%
+    mutate(mes_venda = floor_date(`Data da Venda`, "month")) %>%
+    filter(mes_venda <= floor_date(Sys.Date(), "month")) %>%
+    group_by(mes_venda) %>%
+    summarise(faturamento = sum(Orçamento, na.rm = TRUE), .groups = "drop") %>%
+    arrange(mes_venda)
+})
+
+## Output (grafico_faturamento_mes) ##
+output$grafico_faturamento_mes <- renderPlotly({
+  dados_mes <- faturamento_por_mes()
+  grafico_faturamento_mes <- ggplot(dados_mes, aes(x = mes_venda, y = faturamento)) +
+    geom_line(color = "#B0B0B0", size = 1.2) +
+    geom_point(size = 3, color = "#B0B0B0") +
+    scale_x_date(
+      date_labels = "%B", 
+      date_breaks = "1 month",
+      expand = expansion(mult = c(0.01, 0.05))
+    ) +
+    scale_y_continuous(labels = scales::label_number(big.mark = ".", decimal.mark = ",")) +
+    labs(
+      title = "Faturamento Mensal",
+      x = "Mês",
+      y = "Faturamento (R$)"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 11),
+      axis.text.y = element_text(size = 12),
+      axis.title = element_text(size = 14, face = "bold"),
+      plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+      legend.position = "none"
+    )
+  
+  ggplotly(grafico_faturamento_mes)
+})
+
+##### DADOS BRUTOS ####
+output$raw_data <- renderDT({
+  banco_ajustado() %>%
+    select(
+      Título, 
+      Responsáveis, 
+      Etiquetas, 
+      `Fase atual`, 
+      `Fase Final`,
+      `Page URL`,
+      Orçamento, 
+      `Dias úteis`, 
+      `Criado em`) %>%
+    datatable()
+})
+```
+
+
+
