@@ -15,10 +15,6 @@ server: shiny
 #library dos pacotes
 pacman::p_load(pacman, tidyverse, shiny, bslib, bsicons, gt, reactable, plotly, readxl, shinydashboard, lubridate, DT, rsconnect)
 
-rsconnect::setAccountInfo(name='negociosestat',
-			  token='B3370BBB38444DF7DE0DD24CB4DB7CFD',
-			  secret='L1pPrnKNi42vlgew/Uu77Pbjcqz2UkII8sB70sSf')
-
 #banco de dados
 banco <- read_excel("metricas_17-07-2025.xlsx") %>%
   mutate(
